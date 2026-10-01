@@ -270,6 +270,38 @@ td.c-total .puv{font-weight:700}
   color:#2e7d4f;line-height:1.5}
 .cert-t{font-weight:700;color:#247a44}
 
+/* ============ saved receipts drawer ============ */
+.sbackdrop{position:fixed;inset:0;background:rgba(13,20,30,.48);opacity:0;pointer-events:none;
+  transition:opacity .2s ease;z-index:70}
+.sbackdrop.open{opacity:1;pointer-events:auto}
+.sdrawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);background:var(--panel);
+  border-left:1px solid var(--line);z-index:80;transform:translateX(103%);visibility:hidden;
+  transition:transform .22s ease-out,visibility 0s linear .22s;display:flex;flex-direction:column}
+.sdrawer.open{transform:none;visibility:visible;transition:transform .22s ease-out}
+@media (prefers-reduced-motion:reduce){.sdrawer,.sbackdrop{transition:none}
+.sdrawer{visibility:hidden}.sdrawer.open{visibility:visible}}
+.shead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.shead h2{font-size:15px;font-weight:700;margin:0}
+.shead .sub{font-size:12px;color:var(--mut);margin-top:1px}
+.shead .x{margin-left:auto}
+.sbody{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.snote{font-size:12px;color:var(--mut);background:var(--accent-soft);border:1px dashed var(--line2);
+  border-radius:8px;padding:9px 12px;line-height:1.5}
+.snote b{color:var(--ink)}
+#savedRows{display:flex;flex-direction:column;gap:10px}
+.s-row{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--input)}
+.s-top{display:flex;gap:10px;align-items:baseline}
+.s-t{font-weight:700;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-amt{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700;font-size:13.5px;white-space:nowrap}
+.s-sub{font-size:12px;color:var(--mut);margin-top:3px}
+.s-actions{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.s-actions .btn{flex:1 1 auto;justify-content:center}
+.sfoot{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:8px}
+.sfoot .sp{margin-left:auto}
+.svcount{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;
+  padding:0 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent);
+  font-size:11.5px;font-weight:700;border:1px solid var(--accent)}
+
 /* ============ toast / pdf stage ============ */
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(16px);background:#1d2430;
   color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;
@@ -288,7 +320,8 @@ td.c-total .puv{font-weight:700}
   body[data-mview="preview"] .layout{min-height:calc(100dvh - 57px)}
   .who .wo-part{display:none}
   .btn .blabel-full{display:none}
-  .appbar{gap:8px}
+  .appbar{gap:8px;flex-wrap:wrap;row-gap:8px;padding-bottom:10px}
+  .appbar-actions{margin-left:auto}
 }
 @media (min-width:981px){ .btn .blabel-short{display:none} }
 @media (max-width:420px){
@@ -316,6 +349,7 @@ td.c-total .puv{font-weight:700}
     <button type="button" data-mview-btn="preview">Preview</button>
   </nav>
   <div class="appbar-actions">
+    <button type="button" class="btn small" id="btnSaved" title="Open the saved receipts list">Saved <span class="svcount" id="savedCount">0</span></button>
     <button type="button" class="btn small" id="btnNew" title="Start a new receipt (keeps business details)">New</button>
     <button type="button" class="btn primary small" id="btnPdf" title="Download the filled receipt as a PDF (2 pages)">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 20h16"/></svg>
@@ -346,6 +380,10 @@ td.c-total .puv{font-weight:700}
           <div class="f"><label>Ref / Check #</label><input type="text" data-in="doc.refCheck" autocomplete="off"/></div>
         </div>
         <div class="f"><label>Technician</label><input type="text" data-in="job.technician" autocomplete="off"/></div>
+        <button type="button" class="btn addrow" data-act="saveCurrent" title="Save this receipt to the saved list" style="margin-top:14px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4-4m4 4l4-4"/><path d="M4 17v2.5A1.5 1.5 0 005.5 21h13a1.5 1.5 0 001.5-1.5V17"/></svg>
+          Save receipt
+        </button>
       </div>
     </section>
 
@@ -545,6 +583,27 @@ td.c-total .puv{font-weight:700}
     </div></div>
   </section>
 </main>
+
+<div class="sbackdrop" id="savedBackdrop"></div>
+<aside class="sdrawer" id="savedDrawer" role="dialog" aria-modal="true" aria-label="Saved receipts" aria-hidden="true">
+  <div class="shead">
+    <div><h2>Saved receipts</h2><div class="sub" id="savedSub">Browser archive</div></div>
+    <button type="button" class="btn small icon x" id="btnCloseSaved" title="Close" aria-label="Close saved receipts">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+    </button>
+  </div>
+  <div class="sbody">
+    <div class="snote">Saved receipts are stored <b>in this browser</b> and stay here when you refresh or reopen the page — photos and signatures included. Use <b>File</b> on a receipt to download a backup copy you can open on another device with <b>Open saved file…</b></div>
+    <div id="savedRows"></div>
+    <div class="empty" id="savedEmpty">Nothing saved yet. Fill in the form and press “Save receipt” — or download a PDF, which is added here automatically.</div>
+  </div>
+  <div class="sfoot">
+    <button type="button" class="btn small" id="btnOpenFile" title="Open a previously downloaded receipt save file">Open saved file…</button>
+    <input type="file" id="savedFileInput" accept=".json,application/json" hidden/>
+    <span class="sp"></span>
+    <button type="button" class="btn small" id="btnCloseSaved2">Close</button>
+  </div>
+</aside>
 
 <div id="pdfStage" aria-hidden="true"></div>
 <div id="toast" role="status"></div>
@@ -821,7 +880,10 @@ function setupPad(canvas,key){
   window.addEventListener('resize',size);
   new ResizeObserver(size).observe(canvas);
   size();
-  return {clear:function(){state.sig[key]='';var r=canvas.getBoundingClientRect();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.restore();render();}};
+  return {
+    clear:function(){state.sig[key]='';var r=canvas.getBoundingClientRect();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.restore();render();},
+    redraw:redraw
+  };
 }
 
 /* ---------------- scale preview to viewport ---------------- */
@@ -840,6 +902,7 @@ function fitScale(){
 function sanitize(s){return String(s||'receipt').replace(/[^a-zA-Z0-9-_]+/g,'-').replace(/-+/g,'-').slice(0,60)}
 function exportPDF(){
   var btn=$('#btnPdf');
+  saveCurrent(true);
   if(!window.html2canvas||!(window.jspdf&&window.jspdf.jsPDF)){
     toast('PDF libraries failed to load — check your connection and try again.');
     return;
@@ -872,6 +935,171 @@ function exportPDF(){
     finish();
   })();
 }
+
+/* ---------------- saved receipts: IndexedDB archive + save files ---------------- */
+/* No account and no uploads on this public page: snapshots are written through to
+   the browser's IndexedDB (photos and signatures included), so they survive page
+   refreshes and browser restarts in this browser. Any receipt can also be
+   downloaded as a save file (.json) and opened again later via "Open saved file…". */
+var saved=[];
+var savedDbOk=true,savedDbPromise=null;
+var DB_NAME='receipt-work-order-generator',DB_STORE='receipts';
+function genId(){return ''+Date.now()+'-'+Math.floor(Math.random()*1296).toString(36)+'-'+Math.floor(Math.random()*1296).toString(36)}
+function openSavedDb(){
+  if(savedDbPromise)return savedDbPromise;
+  savedDbPromise=new Promise(function(res,rej){
+    if(!window.indexedDB){rej(new Error('IndexedDB unavailable'));return}
+    try{
+      var rq=window.indexedDB.open(DB_NAME,1);
+      rq.onupgradeneeded=function(){
+        var db=rq.result;
+        if(!db.objectStoreNames.contains(DB_STORE))db.createObjectStore(DB_STORE,{keyPath:'id'});
+      };
+      rq.onsuccess=function(){res(rq.result)};
+      rq.onerror=function(){rej(rq.error||new Error('open failed'))};
+      rq.onblocked=function(){rej(new Error('open blocked'))};
+    }catch(e){rej(e)}
+  });
+  return savedDbPromise;
+}
+function dbWriteOne(entry){
+  return openSavedDb().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(DB_STORE,'readwrite');
+    tx.objectStore(DB_STORE).put({id:String(entry.id),savedAt:entry.savedAt,txn:entry.txn});
+    tx.oncomplete=function(){res()};
+    tx.onerror=function(){rej(tx.error||new Error('write failed'))};
+  })});
+}
+function dbDeleteOne(id){
+  return openSavedDb().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(DB_STORE,'readwrite');
+    tx.objectStore(DB_STORE).delete(String(id));
+    tx.oncomplete=function(){res()};
+    tx.onerror=function(){rej(tx.error||new Error('delete failed'))};
+  })});
+}
+function dbReadAll(){
+  return openSavedDb().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(DB_STORE,'readonly');
+    var rq=tx.objectStore(DB_STORE).getAll();
+    rq.onsuccess=function(){res(rq.result||[])};
+    rq.onerror=function(){rej(rq.error||new Error('read failed'))};
+  })});
+}
+function loadSavedFromDb(){
+  dbReadAll().then(function(records){
+    saved=records.filter(function(r){return r&&r.txn&&r.txn.doc&&r.txn.customer})
+      .map(function(r){return {id:String(r.id),savedAt:(+r.savedAt)||0,txn:r.txn}});
+    saved.sort(function(a,b){return a.savedAt-b.savedAt});
+    renderSavedCount();renderSavedRows();
+  }).catch(function(e){
+    savedDbOk=false;
+    var note=$('.snote');if(note){note.innerHTML='This browser blocked saved-receipt storage, so this list only lasts <b>while this page stays open</b>. Use <b>File</b> on a receipt to download a copy (photos and signatures included), then bring it back later with <b>Open saved file…</b>'}
+    renderSavedCount();renderSavedRows();
+  });
+}
+function txnDeep(v){return JSON.parse(JSON.stringify(v))}
+function savedSig(t){
+  return JSON.stringify([t.doc,t.customer,t.job,t.items,t.totals,t.accepted,t.workNotes,
+    t.sig.techDate,t.sig.custDate,(t.sig.tech||'').length,(t.sig.cust||'').length,
+    (t.photos||[]).map(function(p){return [p.item,p.desc,(p.src||'').length]}),t.obsNotes]);
+}
+function dueOf(t){
+  var sub=(t.items||[]).reduce(function(a,it){return a+parseNum(it.qty)*parseNum(it.unit)},0);
+  return sub+parseNum(t.totals.tax);
+}
+function savedAtStr(ms){
+  try{return new Date(ms).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}catch(e){return ''}
+}
+function renderSavedCount(){
+  $('#savedCount').textContent=saved.length;
+  $('#savedSub').textContent=savedDbOk
+    ? (saved.length?(saved.length+' receipt'+(saved.length>1?'s':'')+' kept in this browser'):'Browser archive')
+    : 'Session archive (storage unavailable)';
+}
+function renderSavedRows(){
+  var w=$('#savedRows');w.innerHTML='';
+  $('#savedEmpty').style.display=saved.length?'none':'block';
+  saved.slice().reverse().forEach(function(s){
+    var t=s.txn;var d=document.createElement('div');d.className='s-row';
+    d.innerHTML='<div class="s-top"><div class="s-t">'+esc(t.doc.receiptNo||'Untitled receipt')+'</div>'+
+      '<div class="s-amt">$ '+money(dueOf(t))+'</div></div>'+
+      '<div class="s-sub">'+esc((t.customer.name||'No customer')+' • '+(t.job.woNo||'no WO')+' • '+savedAtStr(s.savedAt))+'</div>'+
+      '<div class="s-actions">'+
+      '<button type="button" class="btn small" data-sact="open" data-sid="'+s.id+'">Open</button>'+
+      '<button type="button" class="btn small" data-sact="pdf" data-sid="'+s.id+'">PDF</button>'+
+      '<button type="button" class="btn small" data-sact="file" data-sid="'+s.id+'">File</button>'+
+      '<button type="button" class="btn small danger" data-sact="del" data-sid="'+s.id+'">Delete</button>'+
+      '</div>';
+    w.appendChild(d);
+  });
+}
+function normalizeTxn(txn){
+  var base=txnState();
+  if(txn&&typeof txn==='object'){
+    Object.keys(base).forEach(function(k){if(txn[k]!==undefined)base[k]=txn[k]});
+  }
+  base.biz=BIZ;
+  return base;
+}
+function openSaved(s){
+  state=txnDeep(normalizeTxn(s.txn));
+  state.biz=BIZ;
+  if(pads){pads.t.redraw();pads.c.redraw()}
+  resetInputsFromState();renderEdItems();renderPhos();render();
+}
+function saveCurrent(auto){
+  var txn=txnDeep(state);
+  if(saved.length&&savedSig(txn)===savedSig(saved[saved.length-1].txn)){
+    if(!auto)toast('Already saved — nothing changed.');
+    return saved[saved.length-1];
+  }
+  var s={id:genId(),savedAt:Date.now(),txn:txn};
+  if(savedDbOk){
+    dbWriteOne(s).then(null,function(e){
+      console.warn('Saved-receipt DB write failed',e);
+      toast('Could not write to browser storage — receipt kept for this session only.');
+    });
+  }
+  saved.push(s);renderSavedCount();renderSavedRows();
+  if(!auto)toast('Receipt saved.');
+  return s;
+}
+function deleteSaved(id){
+  var sid=String(id);
+  saved=saved.filter(function(x){return String(x.id)!==sid});
+  if(savedDbOk)dbDeleteOne(sid).then(null,function(e){console.warn('Saved-receipt DB delete failed',e)});
+  renderSavedCount();renderSavedRows();toast('Saved receipt deleted.');
+}
+function downloadSaveFile(s){
+  var payload={app:'Receipt & Work Order Generator — save file',v:1,savedAt:new Date(s.savedAt).toISOString(),txn:s.txn};
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));
+  a.download='Receipt_'+sanitize(s.txn.doc.receiptNo)+'.json';
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},2000);
+  toast('Save file downloaded.');
+}
+function importSaveFile(file){
+  if(!file)return;
+  var r=new FileReader();
+  r.onload=function(){
+    try{
+      var d=JSON.parse(r.result);
+      var txn=(d&&d.txn)?d.txn:d;
+      if(!txn||typeof txn!=='object'||!txn.doc||!txn.customer){toast('That file is not a receipt save file.');return}
+      var s={id:genId(),savedAt:(d.savedAt&&Date.parse(d.savedAt))||Date.now(),txn:txnDeep(normalizeTxn(txn))};
+      if(savedDbOk){
+        dbWriteOne(s).then(null,function(e){console.warn('Imported receipt DB write failed',e);toast('Could not write to browser storage.')});
+      }
+      saved.push(s);renderSavedCount();renderSavedRows();
+      openSaved(s);closeSavedDrawer();toast('Save file opened.');
+    }catch(e){toast('Could not read that save file.')}
+  };
+  r.readAsText(file);
+}
+function openSavedDrawer(){$('#savedBackdrop').classList.add('open');$('#savedDrawer').classList.add('open');$('#savedDrawer').setAttribute('aria-hidden','false');renderSavedCount();renderSavedRows()}
+function closeSavedDrawer(){$('#savedBackdrop').classList.remove('open');$('#savedDrawer').classList.remove('open');$('#savedDrawer').setAttribute('aria-hidden','true')}
 
 /* ---------------- wire up ---------------- */
 function resetInputsFromState(){
@@ -915,11 +1143,33 @@ function init(){
     var b=e.target.closest('[data-act]');if(!b)return;
     var act=b.getAttribute('data-act');
     if(act==='addItem'){state.items.push({qty:'',desc:'',type:'Labor',unit:''});renderEdItems();render();}
+    else if(act==='saveCurrent'){saveCurrent(false)}
     else if(act==='regenReceipt'){state.doc.receiptNo=genReceipt(state.biz.owner);resetInputsFromState();render();toast('New receipt number');}
     else if(act==='regenWO'){state.job.woNo=genWO();resetInputsFromState();render();toast('New work order number');}
     else if(act==='clearSigT'){pads.t.clear()}
     else if(act==='clearSigC'){pads.c.clear()}
   });
+
+  /* saved receipts drawer */
+  $('#btnSaved').addEventListener('click',openSavedDrawer);
+  $('#btnCloseSaved').addEventListener('click',closeSavedDrawer);
+  $('#btnCloseSaved2').addEventListener('click',closeSavedDrawer);
+  $('#savedBackdrop').addEventListener('click',closeSavedDrawer);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSavedDrawer()});
+  $('#savedRows').addEventListener('click',function(e){
+    var b=e.target.closest('[data-sact]');if(!b)return;
+    var id=String(b.getAttribute('data-sid')),s=null;
+    saved.forEach(function(x){if(String(x.id)===id)s=x});
+    if(!s)return;
+    var act=b.getAttribute('data-sact');
+    if(act==='open'){closeSavedDrawer();openSaved(s);toast('Receipt reopened.')}
+    else if(act==='pdf'){closeSavedDrawer();openSaved(s);exportPDF()}
+    else if(act==='file'){downloadSaveFile(s)}
+    else if(act==='del'){deleteSaved(id)}
+  });
+  $('#btnOpenFile').addEventListener('click',function(){$('#savedFileInput').click()});
+  var sfi=$('#savedFileInput');
+  sfi.addEventListener('change',function(){importSaveFile(sfi.files&&sfi.files[0]);sfi.value=''});
 
   /* photos dropzone */
   var dz=$('#dz'),fi=$('#fileInput');
@@ -953,7 +1203,7 @@ function boot(){
 }
 
 var __initDone=false;
-function start(){if(__initDone)return;__initDone=true;init();boot();}
+function start(){if(__initDone)return;__initDone=true;init();boot();loadSavedFromDb();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 </script>
