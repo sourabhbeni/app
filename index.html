@@ -25,6 +25,8 @@
     --pv-bg:#0a0d11; --btn:#242c36; --btn-line:#3a4450;
     --shadow:0 12px 32px rgba(0,0,0,.55);
   }
+  .login-err{color:#f19a9a}
+  .s-sub .nsync{color:#e08f8f}
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -301,6 +303,21 @@ td.c-total .puv{font-weight:700}
 .svcount{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;
   padding:0 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent);
   font-size:11.5px;font-weight:700;border:1px solid var(--accent)}
+.s-sub .nsync{font-weight:700;color:#b4232a}
+
+/* ============ login gate ============ */
+#loginGate{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;
+  align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+body.loggedin #loginGate{display:none}
+body:not(.loggedin){overflow:hidden}
+.login-card{width:min(400px,100%);background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:26px 24px 22px;box-shadow:var(--shadow)}
+.login-co{font-size:11px;font-weight:800;letter-spacing:.9px;color:var(--faint);margin-bottom:7px}
+.login-card h1{font-size:20px;font-weight:750;margin:0 0 5px;letter-spacing:-.2px}
+.login-sub{font-size:13px;color:var(--mut);margin:0 0 12px}
+.login-err{font-size:12.5px;color:#b4232a;font-weight:600;min-height:20px;margin:6px 0 9px}
+#loginBtn{width:100%;justify-content:center;padding:10px;font-size:14px}
+.login-fine{font-size:11.5px;color:var(--faint);line-height:1.55;margin:12px 0 0;text-align:center}
 
 /* ============ toast / pdf stage ============ */
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(16px);background:#1d2430;
@@ -349,6 +366,7 @@ td.c-total .puv{font-weight:700}
     <button type="button" data-mview-btn="preview">Preview</button>
   </nav>
   <div class="appbar-actions">
+    <button type="button" class="btn small" id="btnSignOut" title="Sign out of this device">Sign out</button>
     <button type="button" class="btn small" id="btnSaved" title="Open the saved receipts list">Saved <span class="svcount" id="savedCount">0</span></button>
     <button type="button" class="btn small" id="btnNew" title="Start a new receipt (keeps business details)">New</button>
     <button type="button" class="btn primary small" id="btnPdf" title="Download the filled receipt as a PDF (2 pages)">
@@ -587,13 +605,13 @@ td.c-total .puv{font-weight:700}
 <div class="sbackdrop" id="savedBackdrop"></div>
 <aside class="sdrawer" id="savedDrawer" role="dialog" aria-modal="true" aria-label="Saved receipts" aria-hidden="true">
   <div class="shead">
-    <div><h2>Saved receipts</h2><div class="sub" id="savedSub">Browser archive</div></div>
+    <div><h2>Saved receipts</h2><div class="sub" id="savedSub">Cloud archive</div></div>
     <button type="button" class="btn small icon x" id="btnCloseSaved" title="Close" aria-label="Close saved receipts">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
     </button>
   </div>
   <div class="sbody">
-    <div class="snote">Saved receipts are stored <b>in this browser</b> and stay here when you refresh or reopen the page — photos and signatures included. Use <b>File</b> on a receipt to download a backup copy you can open on another device with <b>Open saved file…</b></div>
+    <div class="snote">Saved receipts sync to the secured cloud account, so they follow you to any device where you sign in — photos and signatures included. A local copy is kept in this browser as an offline fallback. Use <b>File</b> on a receipt to download a backup you can reopen later with <b>Open saved file…</b></div>
     <div id="savedRows"></div>
     <div class="empty" id="savedEmpty">Nothing saved yet. Fill in the form and press “Save receipt” — or download a PDF, which is added here automatically.</div>
   </div>
@@ -605,6 +623,20 @@ td.c-total .puv{font-weight:700}
   </div>
 </aside>
 
+<div id="loginGate">
+  <form class="login-card" id="loginForm" autocomplete="on" novalidate>
+    <div class="login-co">CRYSTAL CLEAR INSTALLATIONS LLC</div>
+    <h1>Receipt &amp; Work Order Generator</h1>
+    <p class="login-sub">This is a private tool. Sign in to continue.</p>
+    <div class="f"><label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" name="username" autocomplete="username" required/></div>
+    <div class="f"><label for="loginPass">Password</label>
+      <input type="password" id="loginPass" name="current-password" autocomplete="current-password" required/></div>
+    <div class="login-err" id="loginErr" role="alert"></div>
+    <button type="submit" class="btn primary" id="loginBtn">Sign in</button>
+    <p class="login-fine">Accounts are created in the Supabase dashboard — sign-up is disabled on purpose.</p>
+  </form>
+</div>
 <div id="pdfStage" aria-hidden="true"></div>
 <div id="toast" role="status"></div>
 
@@ -936,24 +968,26 @@ function exportPDF(){
   })();
 }
 
-/* ---------------- saved receipts: IndexedDB archive + save files ---------------- */
-/* No account and no uploads on this public page: snapshots are written through to
-   the browser's IndexedDB (photos and signatures included), so they survive page
-   refreshes and browser restarts in this browser. Any receipt can also be
-   downloaded as a save file (.json) and opened again later via "Open saved file…". */
+/* ---------------- saved receipts: Supabase cloud sync + IndexedDB offline cache ---------------- */
+/* Receipts sync to the Supabase `receipts` table once signed in (the full receipt —
+   fields, line items, totals, signatures, compressed work photos — in the `data`
+   jsonb column). IndexedDB keeps a local copy as an offline fallback, and an outbox
+   queue holds deletes made offline until the connection returns. Save files (.json)
+   can still be downloaded as backups and reopened via "Open saved file…". */
 var saved=[];
 var savedDbOk=true,savedDbPromise=null;
-var DB_NAME='receipt-work-order-generator',DB_STORE='receipts';
+var DB_NAME='receipt-work-order-generator',DB_STORE='receipts',DB_OUTBOX='receipt_outbox';
 function genId(){return ''+Date.now()+'-'+Math.floor(Math.random()*1296).toString(36)+'-'+Math.floor(Math.random()*1296).toString(36)}
 function openSavedDb(){
   if(savedDbPromise)return savedDbPromise;
   savedDbPromise=new Promise(function(res,rej){
     if(!window.indexedDB){rej(new Error('IndexedDB unavailable'));return}
     try{
-      var rq=window.indexedDB.open(DB_NAME,1);
+      var rq=window.indexedDB.open(DB_NAME,2);
       rq.onupgradeneeded=function(){
         var db=rq.result;
         if(!db.objectStoreNames.contains(DB_STORE))db.createObjectStore(DB_STORE,{keyPath:'id'});
+        if(!db.objectStoreNames.contains(DB_OUTBOX))db.createObjectStore(DB_OUTBOX,{keyPath:'seq',autoIncrement:true});
       };
       rq.onsuccess=function(){res(rq.result)};
       rq.onerror=function(){rej(rq.error||new Error('open failed'))};
@@ -965,7 +999,7 @@ function openSavedDb(){
 function dbWriteOne(entry){
   return openSavedDb().then(function(db){return new Promise(function(res,rej){
     var tx=db.transaction(DB_STORE,'readwrite');
-    tx.objectStore(DB_STORE).put({id:String(entry.id),savedAt:entry.savedAt,txn:entry.txn});
+    tx.objectStore(DB_STORE).put({id:String(entry.id),savedAt:entry.savedAt,txn:entry.txn,pending:!!entry.pending});
     tx.oncomplete=function(){res()};
     tx.onerror=function(){rej(tx.error||new Error('write failed'))};
   })});
@@ -986,15 +1020,49 @@ function dbReadAll(){
     rq.onerror=function(){rej(rq.error||new Error('read failed'))};
   })});
 }
+function dbReplaceAll(entries){
+  return openSavedDb().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(DB_STORE,'readwrite');
+    var st=tx.objectStore(DB_STORE);
+    try{st.clear()}catch(e){/* store clearing best-effort */}
+    (entries||[]).forEach(function(en){st.put({id:String(en.id),savedAt:en.savedAt,txn:en.txn,pending:!!en.pending})});
+    tx.oncomplete=function(){res()};
+    tx.onerror=function(){rej(tx.error||new Error('replace failed'))};
+  })});
+}
+function dbQueueOp(op){
+  return openSavedDb().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(DB_OUTBOX,'readwrite');
+    tx.objectStore(DB_OUTBOX).add(op);
+    tx.oncomplete=function(){res()};
+    tx.onerror=function(){rej(tx.error||new Error('outbox write failed'))};
+  })});
+}
+function dbReadOps(){
+  return openSavedDb().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(DB_OUTBOX,'readonly');
+    var rq=tx.objectStore(DB_OUTBOX).getAll();
+    rq.onsuccess=function(){res(rq.result||[])};
+    rq.onerror=function(){rej(rq.error||new Error('outbox read failed'))};
+  })});
+}
+function dbDeleteOp(seq){
+  return openSavedDb().then(function(db){return new Promise(function(res,rej){
+    var tx=db.transaction(DB_OUTBOX,'readwrite');
+    tx.objectStore(DB_OUTBOX).delete(seq);
+    tx.oncomplete=function(){res()};
+    tx.onerror=function(){rej(tx.error||new Error('outbox delete failed'))};
+  })});
+}
 function loadSavedFromDb(){
   dbReadAll().then(function(records){
     saved=records.filter(function(r){return r&&r.txn&&r.txn.doc&&r.txn.customer})
-      .map(function(r){return {id:String(r.id),savedAt:(+r.savedAt)||0,txn:r.txn}});
+      .map(function(r){return {id:String(r.id),savedAt:(+r.savedAt)||0,txn:normalizeTxn(r.txn),pending:!!r.pending}});
     saved.sort(function(a,b){return a.savedAt-b.savedAt});
     renderSavedCount();renderSavedRows();
   }).catch(function(e){
     savedDbOk=false;
-    var note=$('.snote');if(note){note.innerHTML='This browser blocked saved-receipt storage, so this list only lasts <b>while this page stays open</b>. Use <b>File</b> on a receipt to download a copy (photos and signatures included), then bring it back later with <b>Open saved file…</b>'}
+    var note=$('.snote');if(note){note.innerHTML='This browser blocked saved-receipt storage and the cloud could not be reached, so this list only lasts <b>while this page stays open</b>. Use <b>File</b> on a receipt to download a copy (photos and signatures included), then bring it back later with <b>Open saved file…</b>'}
     renderSavedCount();renderSavedRows();
   });
 }
@@ -1012,10 +1080,15 @@ function savedAtStr(ms){
   try{return new Date(ms).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}catch(e){return ''}
 }
 function renderSavedCount(){
-  $('#savedCount').textContent=saved.length;
-  $('#savedSub').textContent=savedDbOk
-    ? (saved.length?(saved.length+' receipt'+(saved.length>1?'s':'')+' kept in this browser'):'Browser archive')
-    : 'Session archive (storage unavailable)';
+  var n=saved.length,pend=saved.filter(function(s){return s.pending}).length;
+  $('#savedCount').textContent=n;
+  var sub;
+  if(!savedDbOk&&!sbOnline)sub='Session archive (storage unavailable)';
+  else if(!sbOnline)sub='Offline — showing browser copies';
+  else if(!n)sub='Cloud archive';
+  else sub=n+' receipt'+(n>1?'s':'')+' synced from cloud';
+  if(pend)sub+=' • '+pend+' not synced';
+  $('#savedSub').textContent=sub;
 }
 function renderSavedRows(){
   var w=$('#savedRows');w.innerHTML='';
@@ -1024,7 +1097,7 @@ function renderSavedRows(){
     var t=s.txn;var d=document.createElement('div');d.className='s-row';
     d.innerHTML='<div class="s-top"><div class="s-t">'+esc(t.doc.receiptNo||'Untitled receipt')+'</div>'+
       '<div class="s-amt">$ '+money(dueOf(t))+'</div></div>'+
-      '<div class="s-sub">'+esc((t.customer.name||'No customer')+' • '+(t.job.woNo||'no WO')+' • '+savedAtStr(s.savedAt))+'</div>'+
+      '<div class="s-sub">'+esc((t.customer.name||'No customer')+' • '+(t.job.woNo||'no WO')+' • '+savedAtStr(s.savedAt))+(s.pending?' • <span class="nsync">not synced</span>':'')+'</div>'+
       '<div class="s-actions">'+
       '<button type="button" class="btn small" data-sact="open" data-sid="'+s.id+'">Open</button>'+
       '<button type="button" class="btn small" data-sact="pdf" data-sid="'+s.id+'">PDF</button>'+
@@ -1050,26 +1123,40 @@ function openSaved(s){
 }
 function saveCurrent(auto){
   var txn=txnDeep(state);
-  if(saved.length&&savedSig(txn)===savedSig(saved[saved.length-1].txn)){
-    if(!auto)toast('Already saved — nothing changed.');
-    return saved[saved.length-1];
-  }
-  var s={id:genId(),savedAt:Date.now(),txn:txn};
-  if(savedDbOk){
-    dbWriteOne(s).then(null,function(e){
-      console.warn('Saved-receipt DB write failed',e);
-      toast('Could not write to browser storage — receipt kept for this session only.');
-    });
-  }
-  saved.push(s);renderSavedCount();renderSavedRows();
-  if(!auto)toast('Receipt saved.');
-  return s;
+  if(!auto)toast('Saving receipt…');
+  return prepareTxnForUpload(txn).then(function(pxn){
+    if(saved.length&&savedSig(pxn)===savedSig(saved[saved.length-1].txn)){
+      if(!auto)toast('Already saved — nothing changed.');
+      return saved[saved.length-1];
+    }
+    var s={id:'pending-'+genId(),savedAt:Date.now(),txn:pxn,pending:true};
+    if(savedDbOk){dbWriteOne(s).then(null,function(e){console.warn('Saved-receipt DB write failed',e)})}
+    saved.push(s);renderSavedCount();renderSavedRows();
+    pushInsert(s,!auto);
+    return s;
+  }).catch(function(e){
+    console.warn('Save failed',e);
+    if(!auto)toast('Save failed: '+(e&&e.message||e));
+  });
 }
 function deleteSaved(id){
-  var sid=String(id);
-  saved=saved.filter(function(x){return String(x.id)!==sid});
+  var sid=String(id),was=null;
+  saved=saved.filter(function(x){if(String(x.id)===sid){was=x;return false}return true});
   if(savedDbOk)dbDeleteOne(sid).then(null,function(e){console.warn('Saved-receipt DB delete failed',e)});
   renderSavedCount();renderSavedRows();toast('Saved receipt deleted.');
+  if(was&&!sbLocalId(was.id)&&sbSession){
+    sbDeleteRow(was.id).then(null,function(e){
+      if(e&&e.auth)return;
+      if(isNetErr(e)){
+        sbOnline=false;
+        dbQueueOp({op:'delete',id:String(was.id),at:Date.now()}).then(null,function(){});
+        toast('Offline — delete queued for sync.');
+      }else{
+        toast('Could not delete from cloud: '+(e&&e.message||'request failed'));
+      }
+      renderSavedCount();renderSavedRows();
+    });
+  }
 }
 function downloadSaveFile(s){
   var payload={app:'Receipt & Work Order Generator — save file',v:1,savedAt:new Date(s.savedAt).toISOString(),txn:s.txn};
@@ -1088,18 +1175,233 @@ function importSaveFile(file){
       var d=JSON.parse(r.result);
       var txn=(d&&d.txn)?d.txn:d;
       if(!txn||typeof txn!=='object'||!txn.doc||!txn.customer){toast('That file is not a receipt save file.');return}
-      var s={id:genId(),savedAt:(d.savedAt&&Date.parse(d.savedAt))||Date.now(),txn:txnDeep(normalizeTxn(txn))};
+      var s={id:'pending-'+genId(),savedAt:(d.savedAt&&Date.parse(d.savedAt))||Date.now(),txn:txnDeep(normalizeTxn(txn)),pending:true};
       if(savedDbOk){
         dbWriteOne(s).then(null,function(e){console.warn('Imported receipt DB write failed',e);toast('Could not write to browser storage.')});
       }
       saved.push(s);renderSavedCount();renderSavedRows();
       openSaved(s);closeSavedDrawer();toast('Save file opened.');
+      pushInsert(s,false);
     }catch(e){toast('Could not read that save file.')}
   };
   r.readAsText(file);
 }
 function openSavedDrawer(){$('#savedBackdrop').classList.add('open');$('#savedDrawer').classList.add('open');$('#savedDrawer').setAttribute('aria-hidden','false');renderSavedCount();renderSavedRows()}
 function closeSavedDrawer(){$('#savedBackdrop').classList.remove('open');$('#savedDrawer').classList.remove('open');$('#savedDrawer').setAttribute('aria-hidden','true')}
+
+/* ---------------- Supabase (cloud storage + auth) ---------------- */
+/* The anon key below is Supabase's public frontend key — it ships in client code
+   by design, and real security comes from the `receipts` table's row-level
+   policies, which allow only signed-in users. Talked to directly over fetch:
+   GoTrue for auth, PostgREST for the `data` jsonb column. */
+var SB_URL='https://rgeibrwouahlpbbnncln.supabase.co';
+var SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJnZWlicndvdWFobHBiYm5uY2xuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MjE0NTUsImV4cCI6MjEwNjM5NzQ1NX0.dvRCOlYrfLzbETjq_DwFpcrgRR-sUYYYtYQoVUKfnIY';
+var sbSession=null;   /* {token, refresh, expiresAt, email} — memory only, never persisted */
+var sbOnline=true;    /* last known cloud reachability */
+
+function sbLocalId(id){return String(id||'').indexOf('pending-')===0}
+function isNetErr(e){return !!e&&!e.auth&&(e instanceof TypeError||/(network|failed to fetch|load failed|offline)/i.test(String(e&&e.message||'')))}
+
+function sbLogin(email,password){
+  return fetch(SB_URL+'/auth/v1/token?grant_type=password',{
+    method:'POST',headers:{apikey:SB_ANON,'Content-Type':'application/json'},
+    body:JSON.stringify({email:email,password:password})
+  }).then(function(res){
+    return res.json().catch(function(){return{}}).then(function(j){return {status:res.status,body:j}});
+  }).then(function(r){
+    if(r.status!==200)throw new Error(r.body.error_description||r.body.msg||('Sign-in failed ('+r.status+')'));
+    sbSession={token:r.body.access_token,refresh:r.body.refresh_token,expiresAt:Date.now()+(r.body.expires_in||3600)*1000,email:email};
+    return sbSession;
+  });
+}
+var sbRefreshPromise=null;
+function sbRefresh(){
+  if(sbRefreshPromise)return sbRefreshPromise;
+  sbRefreshPromise=fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token',{
+    method:'POST',headers:{apikey:SB_ANON,'Content-Type':'application/json'},
+    body:JSON.stringify({refresh_token:(sbSession&&sbSession.refresh)||''})
+  }).then(function(res){
+    if(res.status!==200)throw new Error('session expired');
+    return res.json();
+  }).then(function(j){
+    sbSession={token:j.access_token,refresh:j.refresh_token,expiresAt:Date.now()+(j.expires_in||3600)*1000,email:sbSession.email};
+    sbRefreshPromise=null;
+    return sbSession;
+  }).catch(function(){
+    sbRefreshPromise=null;
+    gateToLogin('Session expired — please sign in again.');
+    throw Object.assign(new Error('signed out'),{auth:true});
+  });
+  return sbRefreshPromise;
+}
+function sbEnsureAuth(){
+  if(!sbSession)return Promise.reject(Object.assign(new Error('signed out'),{auth:true}));
+  if(Date.now()>sbSession.expiresAt-30000)return sbRefresh();
+  return Promise.resolve(sbSession);
+}
+function sbApi(path,meth,body,extraHeaders){
+  return sbEnsureAuth().then(function(){
+    var headers={apikey:SB_ANON,'Authorization':'Bearer '+sbSession.token,'Content-Type':'application/json'};
+    if(extraHeaders)for(var k in extraHeaders)headers[k]=extraHeaders[k];
+    var retried=false;
+    function once(){
+      return fetch(SB_URL+path,{method:meth||'GET',headers:headers,body:(body===undefined?undefined:JSON.stringify(body))}).then(function(res){
+        if(res.status===401&&!retried&&sbSession){
+          retried=true;
+          return sbRefresh().then(function(){
+            headers['Authorization']='Bearer '+sbSession.token;
+            return once();
+          });
+        }
+        return res;
+      });
+    }
+    return once();
+  });
+}
+function sbList(){
+  return sbApi('/rest/v1/receipts?select=id,created_at,data&order=created_at.desc','GET').then(function(res){
+    if(res.status!==200)return res.text().then(function(){throw new Error('Could not load cloud receipts ('+res.status+')')});
+    return res.json();
+  }).then(function(rows){
+    return (rows||[]).filter(function(r){return r&&r.data}).map(function(r){
+      return {id:String(r.id),savedAt:(r.created_at&&Date.parse(r.created_at))||Date.now(),txn:normalizeTxn(r.data),pending:false};
+    });
+  });
+}
+function sbInsertRow(txn){
+  return sbApi('/rest/v1/receipts','POST',[{data:txn}],{Prefer:'return=representation'}).then(function(res){
+    if(res.status!==200&&res.status!==201)return res.text().then(function(){throw new Error('Cloud save failed ('+res.status+')')});
+    return res.json();
+  }).then(function(rows){return rows[0]});
+}
+function sbDeleteRow(id){
+  return sbApi('/rest/v1/receipts?id=eq.'+encodeURIComponent(id),'DELETE').then(function(res){
+    if(res.status!==200&&res.status!==204)return res.text().then(function(){throw new Error('Cloud delete failed ('+res.status+')')});
+    return true;
+  });
+}
+function sbLogout(){
+  if(!sbSession)return Promise.resolve();
+  try{return fetch(SB_URL+'/auth/v1/logout',{method:'POST',headers:{apikey:SB_ANON,'Authorization':'Bearer '+sbSession.token}}).catch(function(){});
+  }catch(e){return Promise.resolve()}
+}
+
+/* ---------------- cloud sync plumbing ---------------- */
+function pushInsert(s,announce){
+  if(s.uploading||!sbSession)return Promise.resolve(s);
+  s.uploading=true;
+  return sbInsertRow(s.txn).then(function(row){
+    s.uploading=false;
+    var oldId=s.id;
+    if(saved.indexOf(s)<0){ /* deleted while the upload was in flight */
+      sbDeleteRow(String(row.id)).catch(function(e){console.warn('Cleanup delete failed',e)});
+      if(savedDbOk)dbDeleteOne(oldId).then(null,function(){});
+      return s;
+    }
+    s.id=String(row.id);s.pending=false;
+    var t=(row.created_at&&Date.parse(row.created_at));if(t)s.savedAt=t;
+    if(savedDbOk){dbDeleteOne(oldId).then(function(){return dbWriteOne(s)}).then(null,function(e){console.warn('IDB mirror update failed',e)});}
+    sbOnline=true;renderSavedCount();renderSavedRows();
+    if(announce)toast('Receipt saved.');
+    return s;
+  },function(e){
+    s.uploading=false;
+    if(e&&e.auth)return s; /* gate already shown */
+    if(isNetErr(e)){sbOnline=false;if(announce)toast('Saved locally — will sync when online.');}
+    else{if(announce)toast('Could not sync: '+(e&&e.message||'request failed'));console.warn('Receipt sync failed',e);}
+    renderSavedCount();renderSavedRows();
+    return s;
+  });
+}
+function flushOutbox(){
+  if(!sbSession)return;
+  saved.slice().forEach(function(s){if(s.pending)pushInsert(s,false)});
+  dbReadOps().then(function(ops){
+    (ops||[]).forEach(function(op){
+      if(op.op!=='delete')return;
+      sbDeleteRow(op.id).then(function(){dbDeleteOp(op.seq).then(null,function(){})},function(e){
+        if(e&&e.auth)return;
+        if(isNetErr(e)){sbOnline=false;renderSavedCount();}
+      });
+    });
+  },function(){});
+}
+function loadCloudSaved(){
+  renderSavedCount();renderSavedRows();
+  $('#savedSub').textContent='Syncing…';
+  var localPending=function(){
+    var mem=saved.filter(function(s){return s.pending});
+    if(!savedDbOk)return Promise.resolve(mem);
+    return dbReadAll().then(function(recs){
+      var ids={};mem.forEach(function(s){ids[String(s.id)]=1});
+      return mem.concat((recs||[]).filter(function(r){return r&&r.pending&&!ids[String(r.id)]}).map(function(r){
+        return {id:String(r.id),savedAt:(+r.savedAt)||0,txn:normalizeTxn(r.txn),pending:true};
+      }));
+    },function(){savedDbOk=false;return mem});
+  };
+  Promise.all([sbList(),localPending()]).then(function(all){
+    sbOnline=true;
+    saved=all[0].concat(all[1]);
+    saved.sort(function(a,b){return a.savedAt-b.savedAt});
+    if(savedDbOk){dbReplaceAll(saved).then(null,function(e){console.warn('IDB mirror failed',e)});}
+    renderSavedCount();renderSavedRows();
+    flushOutbox();
+  },function(e){
+    if(e&&e.auth)return; /* gate already shown */
+    sbOnline=false;
+    loadSavedFromDb(); /* offline fallback */
+  });
+}
+
+/* ---------------- photo compression for upload ---------------- */
+/* Work photos are recompressed at save time so the cloud rows stay small: capped
+   at 1024px on the long edge, re-encoded as JPEG, stepping quality down until the
+   data URL fits ~200KB. The copy shown in the editor stays untouched. */
+function compressPhotoForUpload(src){
+  return new Promise(function(resolve){
+    if(!src||src.indexOf('data:')!==0){resolve(src);return}
+    var img=new Image();
+    img.onload=function(){
+      try{
+        var max=1024,w=img.naturalWidth||1,h=img.naturalHeight||1;
+        var sc=Math.min(1,max/Math.max(w,h));
+        var cw=Math.max(1,Math.round(w*sc)),ch=Math.max(1,Math.round(h*sc));
+        var cv=document.createElement('canvas');cv.width=cw;cv.height=ch;
+        var cx=cv.getContext('2d');cx.fillStyle='#ffffff';cx.fillRect(0,0,cw,ch);
+        cx.drawImage(img,0,0,cw,ch);
+        var q=0.72,out=cv.toDataURL('image/jpeg',q);
+        while(out.length>270000&&q>0.38){q-=0.12;out=cv.toDataURL('image/jpeg',q)}
+        resolve(out);
+      }catch(e){resolve(src)}
+    };
+    img.onerror=function(){resolve(src)};
+    img.src=src;
+  });
+}
+function prepareTxnForUpload(txn){
+  var jobs=(txn.photos||[]).map(function(p){
+    return compressPhotoForUpload(p.src).then(function(url){
+      return {id:p.id,src:url,item:p.item||'',desc:p.desc||''};
+    });
+  });
+  return Promise.all(jobs).then(function(arr){txn.photos=arr;return txn});
+}
+
+/* ---------------- login gate ---------------- */
+function gateOpen(email){
+  document.body.classList.add('loggedin');
+  $('#btnSignOut').title='Signed in as '+email;
+  loadCloudSaved();
+}
+function gateToLogin(msg){
+  sbSession=null;sbOnline=true;
+  saved=[];renderSavedCount();renderSavedRows();
+  $('#btnSignOut').title='Sign out of this device';
+  document.body.classList.remove('loggedin');
+  $('#loginErr').textContent=msg||'';
+  setTimeout(function(){var e=$('#loginEmail');if(e&&e.offsetParent!==null)e.focus();},60);
+}
 
 /* ---------------- wire up ---------------- */
 function resetInputsFromState(){
@@ -1148,6 +1450,34 @@ function init(){
     else if(act==='regenWO'){state.job.woNo=genWO();resetInputsFromState();render();toast('New work order number');}
     else if(act==='clearSigT'){pads.t.clear()}
     else if(act==='clearSigC'){pads.c.clear()}
+  });
+
+  /* login gate */
+  $('#loginForm').addEventListener('submit',function(e){
+    e.preventDefault();
+    var em=$('#loginEmail').value.trim(),pw=$('#loginPass').value;
+    if(!em||!pw){$('#loginErr').textContent='Enter your email and password.';return}
+    var btn=$('#loginBtn');btn.disabled=true;btn.textContent='Signing in…';$('#loginErr').textContent='';
+    sbLogin(em,pw).then(function(){
+      $('#loginPass').value='';
+      btn.disabled=false;btn.textContent='Sign in';
+      gateOpen(em);
+    },function(err){
+      var msg=(err&&err.message)||'Sign-in failed.';
+      if(isNetErr(err))msg='Could not reach the sign-in server — check your connection and try again.';
+      $('#loginErr').textContent=msg;
+      btn.disabled=false;btn.textContent='Sign in';
+    });
+  });
+
+  /* sign out */
+  $('#btnSignOut').addEventListener('click',function(){
+    sbLogout().then(function(){gateToLogin('');toast('Signed out.')},function(){gateToLogin('');toast('Signed out.')});
+  });
+
+  /* reconnect: flush pending work */
+  window.addEventListener('online',function(){
+    if(sbSession){sbOnline=true;flushOutbox();renderSavedCount();renderSavedRows()}
   });
 
   /* saved receipts drawer */
@@ -1203,7 +1533,7 @@ function boot(){
 }
 
 var __initDone=false;
-function start(){if(__initDone)return;__initDone=true;init();boot();loadSavedFromDb();}
+function start(){if(__initDone)return;__initDone=true;init();boot();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 </script>
