@@ -357,7 +357,6 @@ td.c-total .puv{font-weight:700}
         <div class="ro"><span class="k">Owner</span><span class="v">Justin Hines</span></div>
         <div class="ro"><span class="k">Phone</span><span class="v">(832) 618-2536</span></div>
         <div class="ro"><span class="k">Email</span><span class="v">hinesjustin969@gmail.com</span></div>
-        <div class="ro"><span class="k">Website</span><span class="v">CrystalClearInstallations.com</span></div>
         <div class="empty">These details are permanently embedded — they print on every receipt, work order, and photo attachment, even after a reset.</div>
       </div>
     </section>
@@ -449,7 +448,6 @@ td.c-total .puv{font-weight:700}
               <div><span class="k">Owner / Operator:</span> <span data-doc="biz.owner"></span></div>
               <div><span class="k">Phone:</span> <span data-doc="biz.phone"></span></div>
               <div><span class="k">Email:</span> <span data-doc="biz.email"></span></div>
-              <div><span class="k">Website:</span> <span data-doc="biz.web"></span></div>
             </div>
           </div>
           <div class="d-head-r">
@@ -563,7 +561,7 @@ var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelect
 /* Company details are permanently embedded in this form. They print on every
    receipt, work order, and photo attachment, and are never editable or reset. */
 var BIZ={name:'CRYSTAL CLEAR INSTALLATIONS LLC',tagline:'HANDYMAN SERVICES • LICENSED PROFESSIONAL',
-  owner:'Justin Hines',phone:'(832) 618-2536',email:'hinesjustin969@gmail.com',web:'CrystalClearInstallations.com'};
+  owner:'Justin Hines',phone:'(832) 618-2536',email:'hinesjustin969@gmail.com'};
 function todayISO(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function rand4(){return String(Math.floor(1000+Math.random()*9000))}
 function initials(name){return (name||'').trim().split(/\s+/).map(function(w){return w[0]||''}).join('').toUpperCase().slice(0,3)||'CI'}
@@ -698,7 +696,7 @@ function renderPhotos(){
   $('#pvPhotos').innerHTML=html;
 }
 function renderFooters(){
-  var foot=titleCase(state.biz.name)+' • '+state.biz.owner+' • '+state.biz.phone+' • '+state.biz.web;
+  var foot=titleCase(state.biz.name)+' • '+state.biz.owner+' • '+state.biz.phone;
   $('#pvFootL').textContent=foot;
   $('#pvFootL2').textContent=foot;
   $('#pvCert').textContent='The photographic evidence above confirms the completion of repairs and installation in accordance with industry standards as performed by '+titleCase(state.biz.name)+'.';
